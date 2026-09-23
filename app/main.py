@@ -3,10 +3,11 @@ from datetime import datetime, date, time
 from fastapi import Depends, FastAPI
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from .assistant import build_morning_briefing
+from .assistant import build_morning_briefing, get_today_tasks as get_open_today_tasks
+from .commands import command_type, parse_task_command
 from . import models
 from .database import Base, engine, get_db
-from .schemas import TaskCreate, TaskUpdate, TaskResponse
+from .schemas import CommandRequest, CommandResponse, TaskCreate, TaskUpdate, TaskResponse
 
 
 Base.metadata.create_all(bind=engine)
@@ -89,6 +90,63 @@ def morning_briefing(
     return {
         "message": build_morning_briefing(db)
     }
+
+
+@app.post("/command", response_model=CommandResponse)
+def handle_command(
+    command: CommandRequest,
+    db: Session = Depends(get_db),
+):
+    action = command_type(command.text)
+
+    if action == "morning":
+        return CommandResponse(
+            action=action,
+            message=build_morning_briefing(db),
+        )
+
+    if action == "today":
+        tasks = get_open_today_tasks(db)
+        if not tasks:
+            message = "На сегодня незавершённых дел нет. Можно дышать спокойно."
+        else:
+            lines = ["На сегодня:"]
+            for task in tasks:
+                prefix = task.scheduled_at.strftime("%H:%M — ") if task.scheduled_at else ""
+                lines.append(f"• {prefix}{task.title}")
+            message = "\n".join(lines)
+
+        return CommandResponse(action=action, message=message)
+
+    if action == "create_task":
+        try:
+            parsed = parse_task_command(command.text)
+        except ValueError as error:
+            return CommandResponse(action="error", message=str(error))
+
+        task = models.Task(
+            title=parsed.title,
+            scheduled_at=parsed.scheduled_at,
+            notes=parsed.notes,
+        )
+        db.add(task)
+        db.commit()
+        db.refresh(task)
+
+        when = f" на {task.scheduled_at.strftime('%d.%m в %H:%M')}" if task.scheduled_at else ""
+        return CommandResponse(
+            action=action,
+            message=f"Добавила: {task.title}{when}.",
+            task=task,
+        )
+
+    return CommandResponse(
+        action="unknown",
+        message=(
+            "Пока понимаю: «утречко», «что у меня сегодня?» и "
+            "«добавь завтра в 19:00 тренировку»."
+        ),
+    )
 
 @app.patch("/tasks/{task_id}/complete", response_model=TaskResponse)
 def complete_task(

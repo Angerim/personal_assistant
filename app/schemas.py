@@ -26,3 +26,13 @@ class TaskResponse(BaseModel):
     model_config = {
         "from_attributes": True
     }
+
+
+class CommandRequest(BaseModel):
+    text: str
+
+
+class CommandResponse(BaseModel):
+    action: str
+    message: str
+    task: TaskResponse | None = None
