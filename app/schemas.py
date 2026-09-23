@@ -9,11 +9,18 @@ class TaskCreate(BaseModel):
     notes: str | None = None
 
 
+class TaskUpdate(BaseModel):
+    title: str | None = None
+    scheduled_at: datetime | None = None
+    notes: str | None = None
+
+
 class TaskResponse(BaseModel):
     id: int
     title: str
     scheduled_at: datetime | None
     notes: str | None
+    completed: bool
     created_at: datetime
 
     model_config = {

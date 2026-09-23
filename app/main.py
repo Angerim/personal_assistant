@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from .assistant import build_morning_briefing
 from . import models
 from .database import Base, engine, get_db
-from .schemas import TaskCreate, TaskResponse
+from .schemas import TaskCreate, TaskUpdate, TaskResponse
 
 
 Base.metadata.create_all(bind=engine)
@@ -88,4 +88,64 @@ def morning_briefing(
 ):
     return {
         "message": build_morning_briefing(db)
+    }
+
+@app.patch("/tasks/{task_id}/complete", response_model=TaskResponse)
+def complete_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+):
+    task = db.get(models.Task, task_id)
+
+    if task is None:
+        return {"error": "Task not found"}
+
+    task.completed = True
+
+    db.commit()
+    db.refresh(task)
+
+    return task
+
+@app.patch("/tasks/{task_id}", response_model=TaskResponse)
+def update_task(
+    task_id: int,
+    task: TaskUpdate,
+    db: Session = Depends(get_db),
+):
+    existing_task = db.get(models.Task, task_id)
+
+    if existing_task is None:
+        return {"error": "Task not found"}
+
+    if task.title is not None:
+        existing_task.title = task.title
+
+    if task.scheduled_at is not None:
+        existing_task.scheduled_at = task.scheduled_at
+
+    if task.notes is not None:
+        existing_task.notes = task.notes
+
+    db.commit()
+    db.refresh(existing_task)
+
+    return existing_task
+
+@app.delete("/tasks/{task_id}")
+def delete_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+):
+    task = db.get(models.Task, task_id)
+
+    if task is None:
+        return {"error": "Task not found"}
+
+    db.delete(task)
+    db.commit()
+
+    return {
+        "message": "Task deleted",
+        "id": task_id,
     }
